@@ -32,10 +32,11 @@ import pandas as pd
 from scipy.optimize import OptimizeResult, minimize
 
 RISK_FREE_RATE = 0.04
-TRADING_DAYS   = 252
+TRADING_DAYS = 252
 
 
 # ── Portfolio statistics ───────────────────────────────────────────────────────
+
 
 def portfolio_stats(
     weights: np.ndarray,
@@ -49,28 +50,31 @@ def portfolio_stats(
     Handles zero-vol edge case (all-cash portfolio) by returning Sharpe = 0.
     """
     mu = np.asarray(expected_returns)
-    w  = np.asarray(weights)
+    w = np.asarray(weights)
     # Guard against NaN/Inf weights
     if not np.all(np.isfinite(w)) or w.sum() < 1e-10:
         return 0.0, 0.0, 0.0
-    ret    = float(w @ mu)
-    var    = float(w @ cov_matrix @ w)
-    vol    = float(np.sqrt(max(var, 0.0)))
+    ret = float(w @ mu)
+    var = float(w @ cov_matrix @ w)
+    vol = float(np.sqrt(max(var, 0.0)))
     sharpe = (ret - risk_free_rate) / vol if vol > 1e-10 else 0.0
     return ret, vol, sharpe
 
 
 # ── Objective functions ────────────────────────────────────────────────────────
 
+
 def _neg_sharpe(w, mu, cov, rf):
     _, _, s = portfolio_stats(w, mu, cov, rf)
     return -s
+
 
 def _variance(w, cov):
     return float(w @ cov @ w)
 
 
 # ── Core optimiser ─────────────────────────────────────────────────────────────
+
 
 def optimize_portfolio(
     expected_returns: "pd.Series | np.ndarray",
@@ -96,28 +100,38 @@ def optimize_portfolio(
     min_weight : lower bound per asset (0 = long-only; set > 0 for floor)
     """
     mu = np.asarray(expected_returns)
-    n  = len(mu)
+    n = len(mu)
 
     constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
     if target_return is not None:
-        constraints.append({
-            "type": "eq",
-            "fun": lambda w, r=target_return: float(np.asarray(w) @ mu) - r,
-        })
+        constraints.append(
+            {
+                "type": "eq",
+                "fun": lambda w, r=target_return: float(np.asarray(w) @ mu) - r,
+            }
+        )
 
     bounds = [(float(min_weight), float(max_weight))] * n
-    w0     = np.full(n, 1.0 / n)
+    w0 = np.full(n, 1.0 / n)
 
     if minimize_variance or target_return is not None:
         result = minimize(
-            _variance, w0, args=(cov_matrix,),
-            method="SLSQP", bounds=bounds, constraints=constraints,
+            _variance,
+            w0,
+            args=(cov_matrix,),
+            method="SLSQP",
+            bounds=bounds,
+            constraints=constraints,
             options={"ftol": 1e-12, "maxiter": 1000},
         )
     else:
         result = minimize(
-            _neg_sharpe, w0, args=(mu, cov_matrix, risk_free_rate),
-            method="SLSQP", bounds=bounds, constraints=constraints,
+            _neg_sharpe,
+            w0,
+            args=(mu, cov_matrix, risk_free_rate),
+            method="SLSQP",
+            bounds=bounds,
+            constraints=constraints,
             options={"ftol": 1e-12, "maxiter": 1000},
         )
 
@@ -127,6 +141,7 @@ def optimize_portfolio(
 
 
 # ── Efficient frontier ─────────────────────────────────────────────────────────
+
 
 def efficient_frontier(
     expected_returns: "pd.Series | np.ndarray",
@@ -142,16 +157,19 @@ def efficient_frontier(
     -------
     vols, rets : arrays of frontier coordinates (annualised)
     """
-    mu      = np.asarray(expected_returns)
-    lo      = float(mu.min())
-    hi      = float(mu.max()) * 1.05
+    mu = np.asarray(expected_returns)
+    lo = float(mu.min())
+    hi = float(mu.max()) * 1.05
     targets = np.linspace(lo, hi, n_points)
 
     vols, rets = [], []
     for tr in targets:
         res = optimize_portfolio(
-            expected_returns, cov_matrix, risk_free_rate,
-            target_return=tr, max_weight=max_weight,
+            expected_returns,
+            cov_matrix,
+            risk_free_rate,
+            target_return=tr,
+            max_weight=max_weight,
         )
         if res.success:
             r, v, _ = portfolio_stats(res.x, expected_returns, cov_matrix)
@@ -163,13 +181,14 @@ def efficient_frontier(
 
 # ── Monte Carlo cloud ──────────────────────────────────────────────────────────
 
+
 def monte_carlo_portfolios(
     expected_returns: "pd.Series | np.ndarray",
     cov_matrix: np.ndarray,
     n_portfolios: int = 5_000,
     risk_free_rate: float = RISK_FREE_RATE,
     seed: int = 42,
-    max_weight: float = 1.0,          # BUG FIX: was missing — scatter was uncapped
+    max_weight: float = 1.0,  # BUG FIX: was missing — scatter was uncapped
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Generate random long-only portfolios for the feasibility scatter plot.
@@ -182,8 +201,8 @@ def monte_carlo_portfolios(
     -------
     mc_vols, mc_rets, mc_sharpes
     """
-    mu  = np.asarray(expected_returns)
-    n   = len(mu)
+    mu = np.asarray(expected_returns)
+    n = len(mu)
     rng = np.random.default_rng(seed)
 
     mc_vols, mc_rets, mc_sharpes = [], [], []
@@ -205,6 +224,7 @@ def monte_carlo_portfolios(
 
 # ── Historical VaR / CVaR ──────────────────────────────────────────────────────
 
+
 def value_at_risk(
     weights: np.ndarray,
     log_returns: pd.DataFrame,
@@ -212,7 +232,9 @@ def value_at_risk(
 ) -> float:
     """Historical Value-at-Risk at given confidence level (annualised)."""
     port_ret = (log_returns @ np.asarray(weights)).dropna()
-    return float(-np.percentile(port_ret, (1 - confidence) * 100) * np.sqrt(TRADING_DAYS))
+    return float(
+        -np.percentile(port_ret, (1 - confidence) * 100) * np.sqrt(TRADING_DAYS)
+    )
 
 
 def conditional_var(
@@ -224,13 +246,14 @@ def conditional_var(
     Historical CVaR (Expected Shortfall, annualised).
     Returns 0.0 for a degenerate portfolio with no tail losses.
     """
-    port_ret  = (log_returns @ np.asarray(weights)).dropna()
+    port_ret = (log_returns @ np.asarray(weights)).dropna()
     threshold = np.percentile(port_ret, (1 - confidence) * 100)
-    tail      = port_ret[port_ret <= threshold]
+    tail = port_ret[port_ret <= threshold]
     return float(-tail.mean() * np.sqrt(TRADING_DAYS)) if len(tail) > 0 else 0.0
 
 
 # ── Sortino & Calmar ───────────────────────────────────────────────────────────
+
 
 def sortino_ratio(
     weights: np.ndarray,
@@ -241,14 +264,14 @@ def sortino_ratio(
     Annualised Sortino ratio using realised downside deviation.
     Returns 0.0 when downside deviation is effectively zero.
     """
-    port_ret     = (log_returns @ np.asarray(weights)).dropna()
-    daily_rf     = risk_free_rate / TRADING_DAYS
-    excess       = port_ret - daily_rf
-    downside     = excess[excess < 0.0]
+    port_ret = (log_returns @ np.asarray(weights)).dropna()
+    daily_rf = risk_free_rate / TRADING_DAYS
+    excess = port_ret - daily_rf
+    downside = excess[excess < 0.0]
     if len(downside) == 0:
         return 0.0
-    downside_dev = float(np.sqrt((downside ** 2).mean())) * np.sqrt(TRADING_DAYS)
-    ann_excess   = float(excess.mean()) * TRADING_DAYS
+    downside_dev = float(np.sqrt((downside**2).mean())) * np.sqrt(TRADING_DAYS)
+    ann_excess = float(excess.mean()) * TRADING_DAYS
     return ann_excess / downside_dev if downside_dev > 1e-10 else 0.0
 
 
@@ -260,8 +283,8 @@ def max_drawdown_from_weights(
     Maximum drawdown for a fixed-weight portfolio over the price history.
     Returns a non-positive float (e.g. −0.35 = −35 % drawdown).
     """
-    w           = np.asarray(weights)
-    port_level  = (prices / prices.iloc[0]) @ w
+    w = np.asarray(weights)
+    port_level = (prices / prices.iloc[0]) @ w
     running_max = port_level.cummax()
     return float(((port_level - running_max) / running_max).min())
 
@@ -276,12 +299,16 @@ def calmar_ratio(
     Calmar ratio: annualised excess return / max-drawdown magnitude.
     Returns 0.0 when there is no drawdown.
     """
-    ann_ret = float((log_returns @ np.asarray(weights)).mean()) * TRADING_DAYS - risk_free_rate
-    mdd     = max_drawdown_from_weights(weights, prices)
+    ann_ret = (
+        float((log_returns @ np.asarray(weights)).mean()) * TRADING_DAYS
+        - risk_free_rate
+    )
+    mdd = max_drawdown_from_weights(weights, prices)
     return ann_ret / abs(mdd) if abs(mdd) > 1e-10 else 0.0
 
 
 # ── Tracking metrics ───────────────────────────────────────────────────────────
+
 
 def information_ratio(
     weights: np.ndarray,
@@ -292,9 +319,9 @@ def information_ratio(
     Information ratio: annualised active return / tracking error.
     Both weight vectors should sum to 1.
     """
-    port_ret  = (log_returns @ np.asarray(weights)).dropna()
+    port_ret = (log_returns @ np.asarray(weights)).dropna()
     bench_ret = (log_returns @ np.asarray(benchmark_weights)).dropna()
-    active    = (port_ret - bench_ret).dropna()
-    te        = float(active.std()) * np.sqrt(TRADING_DAYS)
-    ar        = float(active.mean()) * TRADING_DAYS
+    active = (port_ret - bench_ret).dropna()
+    te = float(active.std()) * np.sqrt(TRADING_DAYS)
+    ar = float(active.mean()) * TRADING_DAYS
     return ar / te if te > 1e-10 else 0.0

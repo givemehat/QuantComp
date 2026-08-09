@@ -48,20 +48,23 @@ warnings.filterwarnings("ignore")
 
 # ── Result dataclass ──────────────────────────────────────────────────────────
 
+
 @dataclass
 class QAOAResult:
     """Structured container for all QAOA output."""
-    eigenvalue:          float
-    best_bitstring:      str            # decoded, n_stocks chars  e.g. "1010"
-    best_raw_bitstring:  str            # raw, n_qubits chars — for chart colour matching
-    selection:           np.ndarray     # shape (n_stocks,) with 0/1 values
-    selected_tickers:    list[str]
-    probabilities:       dict[str, float]   # raw n_qubits bitstring → probability
-    n_qubits:            int
-    eigenstate:          object = field(repr=False, default=None)
+
+    eigenvalue: float
+    best_bitstring: str  # decoded, n_stocks chars  e.g. "1010"
+    best_raw_bitstring: str  # raw, n_qubits chars — for chart colour matching
+    selection: np.ndarray  # shape (n_stocks,) with 0/1 values
+    selected_tickers: list[str]
+    probabilities: dict[str, float]  # raw n_qubits bitstring → probability
+    n_qubits: int
+    eigenstate: object = field(repr=False, default=None)
 
 
 # ── QUBO builder ──────────────────────────────────────────────────────────────
+
 
 def build_qubo(
     predicted_returns: np.ndarray,
@@ -84,18 +87,20 @@ def build_qubo(
     """
     from qiskit_optimization import QuadraticProgram
 
-    n  = len(predicted_returns)
+    n = len(predicted_returns)
     qp = QuadraticProgram("portfolio_selection")
 
     for i in range(n):
         qp.binary_var(name=f"x{i}")
 
-    linear    = {f"x{i}": -float(predicted_returns[i]) for i in range(n)}
+    linear = {f"x{i}": -float(predicted_returns[i]) for i in range(n)}
     quadratic: dict = {}
     for i in range(n):
         for j in range(n):
-            key              = (f"x{i}", f"x{j}")
-            quadratic[key]   = quadratic.get(key, 0.0) + risk_aversion * float(cov_matrix[i, j])
+            key = (f"x{i}", f"x{j}")
+            quadratic[key] = quadratic.get(key, 0.0) + risk_aversion * float(
+                cov_matrix[i, j]
+            )
 
     qp.minimize(linear=linear, quadratic=quadratic)
 
@@ -111,6 +116,7 @@ def build_qubo(
 
 
 # ── QAOA solver ───────────────────────────────────────────────────────────────
+
 
 def run_qaoa(
     tickers: list[str],
@@ -149,11 +155,11 @@ def run_qaoa(
     algorithm_globals.random_seed = 42
 
     # ── Step 1: Build QUBO ────────────────────────────────────────────────────
-    qp           = build_qubo(predicted_returns, cov_matrix, risk_aversion, cardinality_k)
-    converter    = QuadraticProgramToQubo()
+    qp = build_qubo(predicted_returns, cov_matrix, risk_aversion, cardinality_k)
+    converter = QuadraticProgramToQubo()
     qubo_problem = converter.convert(qp)
-    operator, _  = qubo_problem.to_ising()
-    n_qubits     = operator.num_qubits
+    operator, _ = qubo_problem.to_ising()
+    n_qubits = operator.num_qubits
 
     # ── Step 2: Classical optimiser ───────────────────────────────────────────
     name_upper = optimizer_name.strip().upper()
@@ -162,6 +168,7 @@ def run_qaoa(
     elif name_upper == "ADAM":
         try:
             from qiskit_algorithms.optimizers import ADAM
+
             opt = ADAM(maxiter=maxiter)
         except ImportError:
             warnings.warn("ADAM not available; falling back to COBYLA.")
@@ -183,34 +190,35 @@ def run_qaoa(
                 f"initial_point length {len(initial_point)} != 2*reps={expected_len}. Ignored."
             )
 
-    qaoa   = QAOA(**qaoa_kwargs)
+    qaoa = QAOA(**qaoa_kwargs)
     result = qaoa.compute_minimum_eigenvalue(operator)
 
     # ── Step 5: Extract probabilities ────────────────────────────────────────
-    probs    = _extract_probabilities(result.eigenstate, n_qubits)
+    probs = _extract_probabilities(result.eigenstate, n_qubits)
     if not probs:
         raise RuntimeError("QAOA produced an empty probability distribution.")
 
     # ── Step 6: Decode best bitstring ─────────────────────────────────────────
-    best_raw  = max(probs, key=probs.get)
+    best_raw = max(probs, key=probs.get)
     selection = _decode_bitstring(best_raw, n_qubits, len(tickers))
 
-    selected_tickers   = [tickers[i] for i in range(len(tickers)) if selection[i] == 1]
-    best_display       = "".join(str(b) for b in selection)
+    selected_tickers = [tickers[i] for i in range(len(tickers)) if selection[i] == 1]
+    best_display = "".join(str(b) for b in selection)
 
     return QAOAResult(
-        eigenvalue         = float(result.eigenvalue.real),
-        best_bitstring     = best_display,
-        best_raw_bitstring = best_raw,   # ← NEW: raw key for chart matching
-        selection          = selection,
-        selected_tickers   = selected_tickers,
-        probabilities      = probs,
-        n_qubits           = n_qubits,
-        eigenstate         = result.eigenstate,
+        eigenvalue=float(result.eigenvalue.real),
+        best_bitstring=best_display,
+        best_raw_bitstring=best_raw,  # ← NEW: raw key for chart matching
+        selection=selection,
+        selected_tickers=selected_tickers,
+        probabilities=probs,
+        n_qubits=n_qubits,
+        eigenstate=result.eigenstate,
     )
 
 
 # ── Approximation ratio ───────────────────────────────────────────────────────
+
 
 def approximate_ratio(q_score: float, bf_score: float) -> float:
     """
@@ -238,6 +246,7 @@ def approximate_ratio(q_score: float, bf_score: float) -> float:
 
 # ── Portfolio metrics ─────────────────────────────────────────────────────────
 
+
 def portfolio_metrics_from_selection(
     selection: np.ndarray,
     predicted_returns: np.ndarray,
@@ -254,7 +263,7 @@ def portfolio_metrics_from_selection(
     if len(sel_idx) == 0:
         return 0.0, 0.0, 0.0
 
-    w   = np.ones(len(sel_idx)) / len(sel_idx)
+    w = np.ones(len(sel_idx)) / len(sel_idx)
     ret = float(predicted_returns[sel_idx] @ w)
     var = float(w @ cov_matrix[np.ix_(sel_idx, sel_idx)] @ w)
     vol = float(np.sqrt(max(var, 0.0)))
@@ -262,6 +271,7 @@ def portfolio_metrics_from_selection(
 
 
 # ── Private helpers ───────────────────────────────────────────────────────────
+
 
 def _get_sampler():
     """
@@ -273,6 +283,7 @@ def _get_sampler():
     # Try V2 StatevectorSampler (Qiskit 1.x)
     try:
         from qiskit.primitives import StatevectorSampler
+
         return StatevectorSampler()
     except ImportError:
         pass
@@ -280,6 +291,7 @@ def _get_sampler():
     # Fall back to V1 Sampler (qiskit < 1.0 or qiskit-aer backend)
     try:
         from qiskit.primitives import Sampler
+
         return Sampler()
     except ImportError:
         pass
@@ -306,7 +318,7 @@ def _extract_probabilities(eigenstate, n_qubits: int) -> dict[str, float]:
     # ── Format 1: binary_probabilities() method ───────────────────────────────
     if hasattr(eigenstate, "binary_probabilities"):
         try:
-            raw   = eigenstate.binary_probabilities()
+            raw = eigenstate.binary_probabilities()
             probs = {k.zfill(n_qubits): float(v) for k, v in raw.items()}
         except Exception:
             pass
@@ -315,7 +327,9 @@ def _extract_probabilities(eigenstate, n_qubits: int) -> dict[str, float]:
     elif isinstance(eigenstate, dict):
         for k, v in eigenstate.items():
             try:
-                probs[str(k).zfill(n_qubits)] = float(abs(v) ** 2 if isinstance(v, complex) else v)
+                probs[str(k).zfill(n_qubits)] = float(
+                    abs(v) ** 2 if isinstance(v, complex) else v
+                )
             except Exception:
                 pass
 
@@ -325,7 +339,7 @@ def _extract_probabilities(eigenstate, n_qubits: int) -> dict[str, float]:
         if hasattr(eigenstate, "get_counts"):
             try:
                 counts = eigenstate.get_counts()
-                total  = sum(counts.values())
+                total = sum(counts.values())
                 if total > 0:
                     probs = {k.zfill(n_qubits): v / total for k, v in counts.items()}
             except Exception:
@@ -335,7 +349,11 @@ def _extract_probabilities(eigenstate, n_qubits: int) -> dict[str, float]:
         if not probs and hasattr(eigenstate, "quasi_dists"):
             try:
                 qd = eigenstate.quasi_dists[0]
-                raw = qd.binary_probabilities() if hasattr(qd, "binary_probabilities") else dict(qd)
+                raw = (
+                    qd.binary_probabilities()
+                    if hasattr(qd, "binary_probabilities")
+                    else dict(qd)
+                )
                 probs = {k.zfill(n_qubits): max(float(v), 0.0) for k, v in raw.items()}
             except Exception:
                 pass
@@ -344,6 +362,7 @@ def _extract_probabilities(eigenstate, n_qubits: int) -> dict[str, float]:
         if not probs:
             try:
                 from qiskit.primitives.containers import BitArray
+
                 if isinstance(eigenstate, BitArray):
                     arr = eigenstate.get_int_counts()
                     total = sum(arr.values())
@@ -369,7 +388,7 @@ def _extract_probabilities(eigenstate, n_qubits: int) -> dict[str, float]:
             "Could not extract measurement probabilities from QAOA eigenstate. "
             "Falling back to uniform distribution."
         )
-        keys  = [format(i, f"0{n_qubits}b") for i in range(2 ** n_qubits)]
+        keys = [format(i, f"0{n_qubits}b") for i in range(2**n_qubits)]
         probs = {k: 1.0 / len(keys) for k in keys}
 
     # Normalise to ensure they sum to 1 (floating-point drift)
@@ -394,5 +413,5 @@ def _decode_bitstring(
     Returns np.ndarray of shape (n_stocks,) with 0/1 values.
     """
     padded = bitstring.zfill(n_qubits)
-    padded = padded[::-1]                          # little-endian → natural
+    padded = padded[::-1]  # little-endian → natural
     return np.array([int(b) for b in padded[:n_stocks]])

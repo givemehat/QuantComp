@@ -42,11 +42,12 @@ import yfinance as yf
 
 warnings.filterwarnings("ignore")
 
-CACHE_DIR    = Path(".cache")
+CACHE_DIR = Path(".cache")
 TRADING_DAYS = 252
 
 
 # ── Cache utilities ────────────────────────────────────────────────────────────
+
 
 def _cache_path(tickers: list[str], period: str) -> Path:
     key = "_".join(sorted(tickers)) + f"_{period}"
@@ -65,12 +66,12 @@ def get_cache_info(tickers: list[str], period: str) -> Optional[dict]:
     path = _cache_path(tickers, period)
     if not path.exists():
         return None
-    stat     = path.stat()
-    age_hrs  = (time.time() - stat.st_mtime) / 3600
+    stat = path.stat()
+    age_hrs = (time.time() - stat.st_mtime) / 3600
     return {
-        "path":      str(path),
+        "path": str(path),
         "age_hours": round(age_hrs, 1),
-        "size_kb":   round(stat.st_size / 1024, 1),
+        "size_kb": round(stat.st_size / 1024, 1),
     }
 
 
@@ -96,6 +97,7 @@ def clear_all_cache() -> int:
 
 # ── Ticker validation ──────────────────────────────────────────────────────────
 
+
 def validate_tickers(tickers: list[str]) -> tuple[list[str], list[str]]:
     """
     Quick 5-day download to verify which tickers return data.
@@ -111,10 +113,10 @@ def validate_tickers(tickers: list[str]) -> tuple[list[str], list[str]]:
         test = yf.download(tickers, period="5d", auto_adjust=True, progress=False)
         if test.empty:
             return [], list(tickers)
-        prices  = test["Close"] if isinstance(test.columns, pd.MultiIndex) else test
+        prices = test["Close"] if isinstance(test.columns, pd.MultiIndex) else test
         if isinstance(prices, pd.Series):
             prices = prices.to_frame(name=tickers[0])
-        valid   = [t for t in tickers if t in prices.columns and prices[t].notna().any()]
+        valid = [t for t in tickers if t in prices.columns and prices[t].notna().any()]
         invalid = [t for t in tickers if t not in valid]
         return valid, invalid
     except Exception:
@@ -124,6 +126,7 @@ def validate_tickers(tickers: list[str]) -> tuple[list[str], list[str]]:
 
 
 # ── Price download & caching ───────────────────────────────────────────────────
+
 
 def fetch_prices(
     tickers: list[str],
@@ -175,7 +178,7 @@ def fetch_prices(
     prices = prices.ffill().dropna()
 
     available = [t for t in tickers if t in prices.columns]
-    missing   = set(tickers) - set(available)
+    missing = set(tickers) - set(available)
     if missing:
         warnings.warn(f"Tickers not returned by Yahoo Finance: {missing}")
     if not available:
@@ -197,6 +200,7 @@ def fetch_prices(
 
 # ── Return engineering ─────────────────────────────────────────────────────────
 
+
 def compute_log_returns(prices: pd.DataFrame) -> pd.DataFrame:
     """Daily log-returns; first row dropped (NaN)."""
     return np.log(prices / prices.shift(1)).dropna()
@@ -216,19 +220,20 @@ def compute_annualised_stats(
     cov_matrix       : np.ndarray (annualised N×N, PSD-clipped)
     log_returns      : pd.DataFrame of daily log-returns
     """
-    log_ret  = compute_log_returns(prices)
-    exp_ret  = log_ret.mean() * trading_days
+    log_ret = compute_log_returns(prices)
+    exp_ret = log_ret.mean() * trading_days
 
     # PSD clip: eliminate tiny negative eigenvalues from floating-point noise
-    raw_cov            = log_ret.cov().values * trading_days
-    eigvals, eigvecs   = np.linalg.eigh(raw_cov)
-    eigvals            = np.maximum(eigvals, 0.0)
-    cov_matrix         = eigvecs @ np.diag(eigvals) @ eigvecs.T
+    raw_cov = log_ret.cov().values * trading_days
+    eigvals, eigvecs = np.linalg.eigh(raw_cov)
+    eigvals = np.maximum(eigvals, 0.0)
+    cov_matrix = eigvecs @ np.diag(eigvals) @ eigvecs.T
 
     return exp_ret, cov_matrix, log_ret
 
 
 # ── Normalisation ──────────────────────────────────────────────────────────────
+
 
 def normalise_prices(prices: pd.DataFrame) -> tuple[np.ndarray, object]:
     """
@@ -243,6 +248,7 @@ def normalise_prices(prices: pd.DataFrame) -> tuple[np.ndarray, object]:
 
 
 # ── LSTM sequences ─────────────────────────────────────────────────────────────
+
 
 def prepare_lstm_sequences(
     scaled: np.ndarray,
@@ -271,18 +277,19 @@ def prepare_lstm_sequences(
     X = np.array(X, dtype=np.float32)
     y = np.array(y, dtype=np.float32)
 
-    split        = int(len(X) * train_ratio)
-    X_tr, y_tr   = X[:split],  y[:split]
+    split = int(len(X) * train_ratio)
+    X_tr, y_tr = X[:split], y[:split]
     X_val, y_val = X[split:], y[split:]
 
     if shuffle and len(X_tr) > 0:
-        idx     = np.random.permutation(len(X_tr))
+        idx = np.random.permutation(len(X_tr))
         X_tr, y_tr = X_tr[idx], y_tr[idx]
 
     return X_tr, y_tr, X_val, y_val
 
 
 # ── Rolling analytics ──────────────────────────────────────────────────────────
+
 
 def compute_rolling_volatility(
     prices: pd.DataFrame,
@@ -299,14 +306,15 @@ def compute_rolling_sharpe(
     window: int = 63,
 ) -> pd.DataFrame:
     """Rolling Sharpe ratio (annualised) over a 63-day window by default."""
-    log_ret   = compute_log_returns(prices)
+    log_ret = compute_log_returns(prices)
     roll_mean = log_ret.rolling(window).mean() * TRADING_DAYS
-    roll_vol  = log_ret.rolling(window).std()  * np.sqrt(TRADING_DAYS)
-    roll_vol  = roll_vol.replace(0.0, np.nan)
+    roll_vol = log_ret.rolling(window).std() * np.sqrt(TRADING_DAYS)
+    roll_vol = roll_vol.replace(0.0, np.nan)
     return (roll_mean - risk_free_rate) / roll_vol
 
 
 # ── Drawdown ───────────────────────────────────────────────────────────────────
+
 
 def compute_max_drawdown(prices: pd.DataFrame) -> pd.Series:
     """
@@ -317,7 +325,7 @@ def compute_max_drawdown(prices: pd.DataFrame) -> pd.Series:
     pd.Series indexed by ticker.
     """
     running_max = prices.cummax()
-    drawdown    = (prices - running_max) / running_max
+    drawdown = (prices - running_max) / running_max
     return drawdown.min()
 
 
@@ -329,12 +337,13 @@ def compute_portfolio_drawdown_series(
     Portfolio-level drawdown time series given fixed weights.
     Values are non-positive floats (0 = at high-water mark).
     """
-    port_level  = (prices / prices.iloc[0]) @ np.asarray(weights)
+    port_level = (prices / prices.iloc[0]) @ np.asarray(weights)
     running_max = port_level.cummax()
     return (port_level - running_max) / running_max
 
 
 # ── Risk-adjusted ratios ───────────────────────────────────────────────────────
+
 
 def compute_sortino_ratio(
     weights: np.ndarray,
@@ -345,12 +354,16 @@ def compute_sortino_ratio(
     Annualised Sortino ratio using realised downside deviation.
     Returns 0.0 when downside deviation is effectively zero.
     """
-    port_ret      = (log_returns @ np.asarray(weights)).dropna()
-    daily_rf      = risk_free_rate / TRADING_DAYS
-    excess        = port_ret - daily_rf
-    downside      = excess[excess < 0.0]
-    downside_dev  = float(np.sqrt((downside ** 2).mean())) * np.sqrt(TRADING_DAYS) if len(downside) > 0 else 0.0
-    ann_excess    = float(excess.mean()) * TRADING_DAYS
+    port_ret = (log_returns @ np.asarray(weights)).dropna()
+    daily_rf = risk_free_rate / TRADING_DAYS
+    excess = port_ret - daily_rf
+    downside = excess[excess < 0.0]
+    downside_dev = (
+        float(np.sqrt((downside**2).mean())) * np.sqrt(TRADING_DAYS)
+        if len(downside) > 0
+        else 0.0
+    )
+    ann_excess = float(excess.mean()) * TRADING_DAYS
     return ann_excess / downside_dev if downside_dev > 1e-10 else 0.0
 
 
@@ -364,13 +377,17 @@ def compute_calmar_ratio(
     Calmar ratio: annualised excess return / max-drawdown magnitude.
     Returns 0.0 when the portfolio has no drawdown.
     """
-    ann_ret   = float((log_returns @ np.asarray(weights)).mean()) * TRADING_DAYS - risk_free_rate
+    ann_ret = (
+        float((log_returns @ np.asarray(weights)).mean()) * TRADING_DAYS
+        - risk_free_rate
+    )
     dd_series = compute_portfolio_drawdown_series(weights, prices)
-    max_dd    = float(dd_series.min())            # negative
+    max_dd = float(dd_series.min())  # negative
     return ann_ret / abs(max_dd) if abs(max_dd) > 1e-10 else 0.0
 
 
 # ── Brute-force QUBO optimum ───────────────────────────────────────────────────
+
 
 def brute_force_optimal(
     predicted_returns: np.ndarray,
@@ -390,19 +407,19 @@ def brute_force_optimal(
     an empty selection (score=0) whenever every feasible portfolio had a
     negative QUBO score.  Initialised to −∞ to handle all cases correctly.
     """
-    n          = len(predicted_returns)
-    best_score = -np.inf      # ← BUG FIX (was 0)
-    best_sel   = [0]          # fallback
+    n = len(predicted_returns)
+    best_score = -np.inf  # ← BUG FIX (was 0)
+    best_sel = [0]  # fallback
 
     for k in range(1, n + 1):
         for combo in combinations(range(n), k):
-            idx   = list(combo)
-            w     = np.ones(k) / k
-            r     = float(predicted_returns[idx] @ w)
-            v     = float(w @ cov_matrix[np.ix_(idx, idx)] @ w)
+            idx = list(combo)
+            w = np.ones(k) / k
+            r = float(predicted_returns[idx] @ w)
+            v = float(w @ cov_matrix[np.ix_(idx, idx)] @ w)
             score = r - risk_aversion * v
             if score > best_score:
                 best_score = score
-                best_sel   = idx
+                best_sel = idx
 
     return best_sel, best_score

@@ -26,7 +26,11 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.layers import (
-    LSTM, Dense, Dropout, BatchNormalization, Input,
+    LSTM,
+    Dense,
+    Dropout,
+    BatchNormalization,
+    Input,
 )
 from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.optimizers import Adam
@@ -37,9 +41,9 @@ np.random.seed(42)
 
 _UNITS_L1 = 64
 _UNITS_L2 = 32
-_DROPOUT  = 0.10
-_LR       = 1e-3
-_L2       = 1e-4
+_DROPOUT = 0.10
+_LR = 1e-3
+_L2 = 1e-4
 
 
 def build_model(
@@ -68,12 +72,15 @@ def build_model(
     """
     model = Sequential(
         [
-            LSTM(units_l1, return_sequences=True, input_shape=input_shape,
-                 kernel_regularizer=l2(_L2)),
+            LSTM(
+                units_l1,
+                return_sequences=True,
+                input_shape=input_shape,
+                kernel_regularizer=l2(_L2),
+            ),
             Dropout(dropout),
-            BatchNormalization(),          # ← BUG FIX: was imported, never used
-            LSTM(units_l2, return_sequences=False,
-                 kernel_regularizer=l2(_L2)),
+            BatchNormalization(),  # ← BUG FIX: was imported, never used
+            LSTM(units_l2, return_sequences=False, kernel_regularizer=l2(_L2)),
             Dropout(dropout),
             Dense(n_outputs, activation="linear"),
         ],
@@ -118,7 +125,8 @@ def train(
         ),
     ]
     history = model.fit(
-        X_train, y_train,
+        X_train,
+        y_train,
         validation_data=(X_val, y_val),
         epochs=epochs,
         batch_size=batch_size,
@@ -145,7 +153,7 @@ def predict_expected_returns(
     `start >= n − 1` produced an empty loop and np.mean raised a warning,
     returning NaN.  Now falls back to the widest possible window.
     """
-    n     = len(scaled_prices)
+    n = len(scaled_prices)
     start = max(n_steps, n - test_window - n_steps)
 
     # BUG FIX: ensure at least one prediction can be made
@@ -157,7 +165,7 @@ def predict_expected_returns(
         if i < n_steps:
             continue
         window = scaled_prices[i - n_steps : i, :][np.newaxis]
-        pred   = model.predict(window, verbose=0)
+        pred = model.predict(window, verbose=0)
         preds.append(pred[0])
 
     if not preds:
@@ -185,16 +193,16 @@ def walk_forward_predict(
     -------
     np.ndarray of shape (n_stocks,)
     """
-    n        = len(scaled_prices)
+    n = len(scaled_prices)
     fold_len = max(1, (n - n_steps) // n_folds)
-    preds    = []
+    preds = []
 
     for fold in range(n_folds):
         i = n_steps + fold * fold_len
         if i >= n:
             break
         window = scaled_prices[i - n_steps : i, :][np.newaxis]
-        pred   = model.predict(window, verbose=0)
+        pred = model.predict(window, verbose=0)
         preds.append(pred[0])
 
     if not preds:
@@ -212,13 +220,10 @@ def get_model_summary_dict(model: tf.keras.Model) -> dict:
     {"total_params": int, "trainable_params": int, "layers": list[str]}
     """
     return {
-        "total_params":     model.count_params(),
-        "trainable_params": sum(
-            tf.size(v).numpy() for v in model.trainable_variables
-        ),
+        "total_params": model.count_params(),
+        "trainable_params": sum(tf.size(v).numpy() for v in model.trainable_variables),
         "layers": [
-            f"{layer.__class__.__name__}({layer.name})"
-            for layer in model.layers
+            f"{layer.__class__.__name__}({layer.name})" for layer in model.layers
         ],
     }
 
